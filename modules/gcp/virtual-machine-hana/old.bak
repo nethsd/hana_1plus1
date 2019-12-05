@@ -1,0 +1,894 @@
+locals {
+  automation_username      = "${lookup(var.bootstrap_config, "automation_username", "")}"
+  automation_user_id       = "${lookup(var.bootstrap_config, "automation_user_id", "")}"
+  automation_environment   = "${lookup(var.bootstrap_config, "automation_environment", "")}"
+  automation_template_path = "/automation/github/${lookup(var.bootstrap_config, "automation_environment", "")}/hcm-chef-automation/platform/rundeck-jobs/chef-full.erb"
+  name_servers             = "${lookup(var.bootstrap_config, "name_servers", "")}"
+  automation_mount         = "${lookup(var.bootstrap_config, "automation_mount", "")}"
+  roaming_mount            = "${lookup(var.bootstrap_config, "roaming_mount", "")}"
+  public_key               = "${file("/home/${local.automation_username}/.ssh/id_rsa.pub")}"
+  dc                       = "${lookup(var.bootstrap_config, "dc", "")}"
+  suse_repo                = "${lookup(var.bootstrap_config, "suse_repo", "")}"
+  role                     = "${lookup(var.bootstrap_config, "role", "hcm_platform_os_setup")}"
+  disk_count               = "${var.hdd_disk_count * var.num}"
+  ssd_disk_count           = "${var.ssd_disk_count * var.num}"
+}
+
+resource "azurerm_virtual_machine" "instance" {
+  count               = "${var.zone_aware ? 0 : var.num}"
+  name                = "${replace(var.name, "-", "")}${format("%02d", count.index + 1)}"
+  location            = "${var.location}"
+  resource_group_name = "${var.resource_group_name}"
+
+  primary_network_interface_id = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.id, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.id), count.index)}"
+
+
+
+  network_interface_ids = [
+    "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.id, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.id), count.index)}", "${element(azurerm_network_interface.vm_instance_heartbeat_nic.*.id, count.index)}", "${element(azurerm_network_interface.vm_instance_backup_nic.*.id, count.index)}"
+  ]
+
+
+  vm_size                          = "${var.vm_size}"
+  delete_os_disk_on_termination    = true
+  delete_data_disks_on_termination = true
+  availability_set_id              = "${var.availability_set_id != "" ? var.availability_set_id : module.availability_set.id}"
+
+  storage_os_disk {
+    name          = "${replace(var.name, "-", "")}${format("%02d", count.index + 1)}-osdisk"
+    caching       = "ReadOnly"
+    create_option = "FromImage"
+
+    #disk_size_gb  = "${var.osdisk_size_gb != "" ? var.osdisk_size_gb : 50}"
+  }
+
+  storage_image_reference {
+    id        = "${var.os_image_id != "" ? var.os_image_id : ""}"
+    publisher = "${lookup(var.image, "publisher", "")}"
+    offer     = "${lookup(var.image, "offer", "")}"
+    sku       = "${lookup(var.image, "sku", "")}"
+    version   = "${lookup(var.image, "version", "")}"
+  }
+
+  os_profile {
+    computer_name  = "${replace(var.name, "-", "")}${format("%02d", count.index + 1)}"
+    admin_username = "initopsadmin"
+    admin_password = "${var.admin_password}"
+  }
+
+  os_profile_linux_config {
+    disable_password_authentication = false
+  }
+
+  tags = "${var.tags}"
+
+  boot_diagnostics {
+    enabled     = "true"
+    storage_uri = "${var.bootdiag_storage_uri}"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+
+    ignore_changes = [
+      "boot_diagnostics.#",
+      "boot_diagnostics.0.storage_uri",
+    ]
+  }
+}
+
+resource "azurerm_virtual_machine" "instance_zone_aware" {
+  count               = "${var.zone_aware ? var.num : 0}"
+  name                = "${replace(var.name, "-", "")}${format("%02d", count.index + 1)}"
+  location            = "${var.location}"
+  resource_group_name = "${var.resource_group_name}"
+
+  primary_network_interface_id = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.id, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.id), count.index)}"
+
+
+  # network_interface_ids = [
+  #    "${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.id,count.index)}","${element(azurerm_network_interface.vm_instance_heartbeat_nic.*.id,count.index)}","${element(azurerm_network_interface.vm_instance_backup_nic.*.id, count.index)}"
+  #  ]
+
+
+  network_interface_ids = [
+    "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.id, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.id), count.index)}", "${element(azurerm_network_interface.vm_instance_heartbeat_nic.*.id, count.index)}", "${element(azurerm_network_interface.vm_instance_backup_nic.*.id, count.index)}"
+  ]
+
+  vm_size                          = "${var.vm_size}"
+  delete_os_disk_on_termination    = true
+  delete_data_disks_on_termination = true
+
+  storage_os_disk {
+    name          = "${replace(var.name, "-", "")}${format("%02d", count.index + 1)}-osdisk"
+    caching       = "ReadOnly"
+    create_option = "FromImage"
+
+    #disk_size_gb  = "${var.osdisk_size_gb != "" ? var.osdisk_size_gb : 50}"
+  }
+
+  storage_image_reference {
+    id        = "${var.os_image_id != "" ? var.os_image_id : ""}"
+    publisher = "${lookup(var.image, "publisher", "")}"
+    offer     = "${lookup(var.image, "offer", "")}"
+    sku       = "${lookup(var.image, "sku", "")}"
+    version   = "${lookup(var.image, "version", "")}"
+  }
+
+  os_profile {
+    computer_name  = "${replace(var.name, "-", "")}${format("%02d", count.index + 1)}"
+    admin_username = "initopsadmin"
+    admin_password = "${var.admin_password}"
+  }
+
+  os_profile_linux_config {
+    disable_password_authentication = false
+  }
+
+  tags  = "${var.tags}"
+  zones = ["${element(var.zones, count.index % length(var.zones))}"]
+
+  boot_diagnostics {
+    enabled     = "true"
+    storage_uri = "${var.bootdiag_storage_uri}"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+
+    ignore_changes = [
+      "boot_diagnostics.#",
+      "boot_diagnostics.0.storage_uri",
+    ]
+  }
+}
+
+#Create SSD disk
+resource "azurerm_managed_disk" "ssd_hana_usr_disk" {
+  count                = "${var.zone_aware ? "${var.is_cluster ? length(var.cluster_disks) : 1}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name), count.index % var.num)}_usrsap${lookup(var.cluster_disks[count.index], "sid", "")}_ssd${format("%02d", count.index / var.num + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[count.index], "usr_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[count.index], "usr_size", "")}"
+  zones                = ["${var.zone_aware ? "${element(var.zones, count.index % length(var.zones))}" : ""}"]
+}
+
+resource "azurerm_managed_disk" "ssd_hana_data_disk_node1" {
+  #count                = "${length(var.cluster_disks)}"
+  count                = "${var.zone_aware ? "${lookup(var.cluster_disks[0], "data_disk_count", "")}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name), 0)}_hanadata${lookup(var.cluster_disks[0], "sid", "")}ssd${format("%02d", count.index + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[0], "data_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[0], "data_size", "")}"
+  zones                = ["${var.zone_aware ? "${element(var.zones, count.index % length(var.zones))}" : ""}"]
+}
+
+resource "azurerm_managed_disk" "ssd_hana_data_disk_node2" {
+  #count                = "${length(var.cluster_disks)}"
+  count                = "${var.zone_aware ? "${lookup(var.cluster_disks[1], "data_disk_count", "")}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name), 1)}_hanadata${lookup(var.cluster_disks[1], "sid", "")}ssd${format("%02d", count.index + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[1], "data_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[1], "data_size", "")}"
+  zones                = ["${var.zone_aware ? "${element(var.zones, count.index % length(var.zones))}" : ""}"]
+}
+
+
+
+resource "azurerm_managed_disk" "ssd_hana_shared_disk" {
+  count                = "${var.zone_aware ? "${var.is_cluster ? length(var.cluster_disks) : 1}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name), count.index % var.num)}_hanashared${lookup(var.cluster_disks[count.index], "sid", "")}ssd${format("%02d", count.index / var.num + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[count.index], "shared_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[count.index], "shared_size", "")}"
+  zones                = ["${var.zone_aware ? "${element(var.zones, count.index % length(var.zones))}" : ""}"]
+}
+
+resource "azurerm_managed_disk" "ssd_hana_log_disk_node1" {
+  #count                = "${length(var.cluster_disks)}"
+  count                = "${var.zone_aware ? "${lookup(var.cluster_disks[0], "log_disk_count", "")}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name), 0)}_hanalog${lookup(var.cluster_disks[0], "sid", "")}ssd${format("%02d", count.index + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[0], "log_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[0], "log_size", "")}"
+  zones                = ["${var.zone_aware ? "${element(var.zones, count.index % length(var.zones))}" : ""}"]
+}
+
+resource "azurerm_managed_disk" "ssd_hana_log_disk_node2" {
+  #count                = "${length(var.cluster_disks)}"
+  count                = "${var.zone_aware ? "${lookup(var.cluster_disks[1], "log_disk_count", "")}" : 0}" 
+name                 = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name), 1)}_hanalog${lookup(var.cluster_disks[1], "sid", "")}ssd${format("%02d", count.index + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[1], "log_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[1], "log_size", "")}"
+  zones                = ["${var.zone_aware ? "${element(var.zones, count.index % length(var.zones))}" : ""}"]
+}
+
+
+resource "azurerm_managed_disk" "ssd_hana_databkp_disk" {
+#  count = "${var.zone_aware ? "${var.is_cluster ? lookup(var.cluster_disks[0], "databkp_disk_count", "1") + lookup(var.cluster_disks[1], "databkp_disk_count", "1") : 1"} : 0}"
+  count                 = "${var.zone_aware ? "${var.is_cluster ? length(var.cluster_disks) : 1}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name), count.index % var.num)}_hana_databackup${lookup(var.cluster_disks[0], "sid", "")}ssd${format("%02d", count.index / var.num + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[0], "databkp_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[0], "databkp_size", "")}"
+  zones                = ["${var.zone_aware ? "${element(var.zones, count.index % length(var.zones))}" : ""}"]
+}
+
+resource "azurerm_managed_disk" "ssd_hana_logbkp_disk" {
+  count                = "${var.zone_aware ? "${var.is_cluster ? length(var.cluster_disks) : 1}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name), count.index % var.num)}_hana_logbackup${lookup(var.cluster_disks[count.index], "sid", "")}ssd${format("%02d", count.index / var.num + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[count.index], "logbkp_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[count.index], "logbkp_size", "")}"
+  zones                = ["${var.zone_aware ? "${element(var.zones, count.index % length(var.zones))}" : ""}"]
+}
+
+#no zone disks
+resource "azurerm_managed_disk" "no_zone_ssd_hana_usr_disk" {
+  count                = "${!var.zone_aware ? "${var.is_cluster ? length(var.cluster_disks) : 1}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance.*.name), count.index % var.num)}_usrsap${lookup(var.cluster_disks[count.index], "sid", "")}_ssd${format("%02d", count.index / var.num + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[count.index], "usr_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[count.index], "usr_size", "")}"
+}
+
+resource "azurerm_managed_disk" "no_zone_ssd_hana_data_disk_node1" {
+  #count                = "${length(var.cluster_disks)}"
+  count                = "${!var.zone_aware ? "${lookup(var.cluster_disks[0], "data_disk_count", "")}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance.*.name), 0)}_hanadata${lookup(var.cluster_disks[0], "sid", "")}ssd${format("%02d", count.index + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[0], "data_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[0], "data_size", "")}"
+}
+
+resource "azurerm_managed_disk" "no_zone_ssd_hana_data_disk_node2" {
+  #count                = "${length(var.cluster_disks)}"
+  count                = "${!var.zone_aware ? "${lookup(var.cluster_disks[1], "data_disk_count", "")}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance.*.name), 1)}_hanadata${lookup(var.cluster_disks[1], "sid", "")}ssd${format("%02d", count.index + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[1], "data_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[1], "data_size", "")}"
+}
+
+resource "azurerm_managed_disk" "no_zone_ssd_hana_shared_disk" {
+  count                = "${!var.zone_aware ? "${var.is_cluster ? length(var.cluster_disks) : 1}":0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance.*.name), count.index % var.num)}_hanashared${lookup(var.cluster_disks[count.index], "sid", "")}ssd${format("%02d", count.index / var.num + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[count.index], "shared_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[count.index], "shared_size", "")}"
+}
+
+resource "azurerm_managed_disk" "no_zone_ssd_hana_log_disk_node1" {
+  #count                = "${length(var.cluster_disks)}"
+  count                = "${!var.zone_aware ? "${lookup(var.cluster_disks[0], "log_disk_count", "")}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance.*.name), 0)}_hanalog${lookup(var.cluster_disks[0], "sid", "")}ssd${format("%02d", count.index + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[0], "log_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[0], "log_size", "")}"
+}
+
+resource "azurerm_managed_disk" "no_zone_ssd_hana_log_disk_node2" {
+  #count                = "${length(var.cluster_disks)}"
+  count                = "${!var.zone_aware ? "${lookup(var.cluster_disks[1], "log_disk_count", "")}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance.*.name), 1)}_hanalog${lookup(var.cluster_disks[1], "sid", "")}ssd${format("%02d", count.index + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[1], "log_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[1], "log_size", "")}"
+}
+
+
+resource "azurerm_managed_disk" "no_zone_ssd_hana_databkp_disk" {
+  count = "${!var.zone_aware ? "${var.is_cluster ? lookup(var.cluster_disks[0], "databkp_disk_count", "1") + lookup(var.cluster_disks[1], "databkp_disk_count", "1") : 1}": 0}"
+  #  count                 = "${var.is_cluster ? length(var.cluster_disks) : 1}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance.*.name), count.index % var.num)}_hana_databackup${lookup(var.cluster_disks[0], "sid", "")}ssd${format("%02d", count.index / var.num + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[0], "databkp_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[0], "databkp_size", "")}"
+}
+
+resource "azurerm_managed_disk" "no_zone_ssd_hana_logbkp_disk" {
+  count                = "${!var.zone_aware ? "${var.is_cluster ? length(var.cluster_disks) : 1}" : 0}"
+  name                 = "${element(concat(azurerm_virtual_machine.instance.*.name), count.index % var.num)}_hana_logbackup${lookup(var.cluster_disks[count.index], "sid", "")}ssd${format("%02d", count.index / var.num + 1)}"
+  location             = "${var.location}"
+  resource_group_name  = "${var.resource_group_name}"
+  storage_account_type = "${lookup(var.cluster_disks[count.index], "logbkp_type", "")}"
+  create_option        = "Empty"
+  disk_size_gb         = "${lookup(var.cluster_disks[count.index], "logbkp_size", "")}"
+}
+
+
+#SSD Attachment
+resource "azurerm_virtual_machine_data_disk_attachment" "ssd_hana_usr_disk_attachment" {
+  count              = "${var.is_cluster ? length(var.cluster_disks) : 1}"
+  managed_disk_id    = "${element(concat(azurerm_managed_disk.no_zone_ssd_hana_usr_disk.*.id, azurerm_managed_disk.ssd_hana_usr_disk.*.id), count.index)}"
+  virtual_machine_id = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.id, azurerm_virtual_machine.instance.*.id), count.index)}"
+  lun                = "${lookup(var.cluster_disks[count.index], "usr_lun", "")}"
+  caching            = "ReadWrite"
+
+  lifecycle {
+    ignore_changes = ["managed_disk_id", "virtual_machine_id", "lun"]
+  }
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "ssd_hana_data_disk_attachment_node1" {
+  count              = "${lookup(var.cluster_disks[0], "data_disk_count", "")}"
+  managed_disk_id    = "${element(concat(azurerm_managed_disk.no_zone_ssd_hana_data_disk_node1.*.id, azurerm_managed_disk.ssd_hana_data_disk_node1.*.id), count.index)}"
+  virtual_machine_id = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.id, azurerm_virtual_machine.instance.*.id), 0)}"
+  lun                = "${element(split(",", "${lookup(var.cluster_disks[0], "data_lun", "")}"), count.index)}"
+  caching            = "None"
+  lifecycle {
+    ignore_changes = ["managed_disk_id", "virtual_machine_id", "lun"]
+  }
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "ssd_hana_data_disk_attachment_node2" {
+  count              = "${lookup(var.cluster_disks[1], "data_disk_count", "")}"
+  managed_disk_id    = "${element(concat(azurerm_managed_disk.no_zone_ssd_hana_data_disk_node2.*.id, azurerm_managed_disk.ssd_hana_data_disk_node2.*.id), count.index)}"
+  virtual_machine_id = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.id, azurerm_virtual_machine.instance.*.id), 1)}"
+  lun                = "${element(split(",", "${lookup(var.cluster_disks[1], "data_lun", "")}"), count.index)}"
+  caching            = "None"
+  lifecycle {
+    ignore_changes = ["managed_disk_id", "virtual_machine_id", "lun"]
+  }
+}
+
+
+resource "azurerm_virtual_machine_data_disk_attachment" "ssd_hana_shared_disk_attachment" {
+  count              = "${var.is_cluster ? length(var.cluster_disks) : 1}"
+  managed_disk_id    = "${element(concat(azurerm_managed_disk.no_zone_ssd_hana_shared_disk.*.id, azurerm_managed_disk.ssd_hana_shared_disk.*.id), count.index)}"
+  virtual_machine_id = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.id, azurerm_virtual_machine.instance.*.id), count.index)}"
+  lun                = "${lookup(var.cluster_disks[count.index], "shared_lun", "")}"
+  caching            = "ReadWrite"
+
+  lifecycle {
+    ignore_changes = ["managed_disk_id", "virtual_machine_id", "lun"]
+  }
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "ssd_hana_log_disk_attachment_node1" {
+  count              = "${lookup(var.cluster_disks[0], "log_disk_count", "")}"
+  managed_disk_id    = "${element(concat(azurerm_managed_disk.no_zone_ssd_hana_log_disk_node1.*.id, azurerm_managed_disk.ssd_hana_log_disk_node1.*.id), count.index)}"
+  virtual_machine_id = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.id, azurerm_virtual_machine.instance.*.id), 0)}"
+  lun                = "${element(split(",", "${lookup(var.cluster_disks[0], "log_lun", "")}"), count.index)}"
+
+  caching                   = "ReadOnly"
+  write_accelerator_enabled = "true"
+
+  lifecycle {
+    ignore_changes = ["managed_disk_id", "virtual_machine_id", "lun"]
+  }
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "ssd_hana_log_disk_attachment_node2" {
+  count              = "${lookup(var.cluster_disks[1], "log_disk_count", "")}"
+  managed_disk_id    = "${element(concat(azurerm_managed_disk.no_zone_ssd_hana_log_disk_node2.*.id, azurerm_managed_disk.ssd_hana_log_disk_node2.*.id), count.index)}"
+  virtual_machine_id = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.id, azurerm_virtual_machine.instance.*.id), 1)}"
+  lun                = "${element(split(",", "${lookup(var.cluster_disks[1], "log_lun", "")}"), count.index)}"
+
+  caching                   = "ReadOnly"
+  write_accelerator_enabled = "true"
+  lifecycle {
+    ignore_changes = ["managed_disk_id", "virtual_machine_id", "lun"]
+  }
+}
+
+
+resource "azurerm_virtual_machine_data_disk_attachment" "ssd_hana_databkp_disk_attachment" {
+  count              = "${var.is_cluster ? length(var.cluster_disks) : 1}"
+  managed_disk_id    = "${element(concat(azurerm_managed_disk.no_zone_ssd_hana_databkp_disk.*.id, azurerm_managed_disk.ssd_hana_databkp_disk.*.id), count.index)}"
+  virtual_machine_id = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.id, azurerm_virtual_machine.instance.*.id), count.index)}"
+  lun                = "${lookup(var.cluster_disks[count.index], "databkp_lun", "")}"
+  caching            = "None"
+  lifecycle {
+    ignore_changes = ["managed_disk_id", "virtual_machine_id", "lun"]
+  }
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "ssd_hana_logbkp_disk_attachment" {
+  count              = "${var.is_cluster ? length(var.cluster_disks) : 1}"
+  managed_disk_id    = "${element(concat(azurerm_managed_disk.no_zone_ssd_hana_logbkp_disk.*.id, azurerm_managed_disk.ssd_hana_logbkp_disk.*.id), count.index)}"
+  virtual_machine_id = "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.id, azurerm_virtual_machine.instance.*.id), count.index)}"
+  lun                = "${lookup(var.cluster_disks[count.index], "logbkp_lun", "")}"
+  caching            = "None"
+  lifecycle {
+    ignore_changes = ["managed_disk_id", "virtual_machine_id", "lun"]
+  }
+}
+
+
+resource "null_resource" "ssd_hana_usr_disk_mount" {
+  count = "${length(var.cluster_disks)}"
+
+  connection {
+    host     = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+    type     = "ssh"
+    user     = "${var.admin_username}"
+    password = "${var.admin_password}"
+    timeout  = "1m"
+  }
+
+  provisioner "file" {
+    source      = "./disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo -n true && sudo sh /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "usr_lun", "")} ${lookup(var.cluster_disks[count.index], "usr_vg", "")} ${lookup(var.cluster_disks[count.index], "usr_lg", "")} ${lookup(var.cluster_disks[count.index], "usr_mount", "")}",
+    ]
+  }
+
+  depends_on = ["azurerm_virtual_machine_data_disk_attachment.ssd_hana_usr_disk_attachment"]
+}
+
+resource "null_resource" "ssd_hana_data_disk_mount" {
+  count = "${length(var.cluster_disks)}"
+
+  connection {
+    #    host     = "${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address,count.index)}"
+    host     = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+    type     = "ssh"
+    user     = "${var.admin_username}"
+    password = "${var.admin_password}"
+    timeout  = "1m"
+  }
+
+  provisioner "file" {
+    source      = "./disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo -n true && sudo sh /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "data_lun", "")} ${lookup(var.cluster_disks[count.index], "data_vg", "")} ${lookup(var.cluster_disks[count.index], "data_lg", "")} ${lookup(var.cluster_disks[count.index], "data_mount", "")} ${lookup(var.cluster_disks[count.index], "data_disk_count", "")} ",
+    ]
+  }
+
+  depends_on = ["azurerm_virtual_machine_data_disk_attachment.ssd_hana_data_disk_attachment_node2", "azurerm_virtual_machine_data_disk_attachment.ssd_hana_data_disk_attachment_node1"]
+}
+
+resource "null_resource" "ssd_hana_shared_disk_mount" {
+  count = "${length(var.cluster_disks)}"
+
+  connection {
+
+    #    host     = "${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address,count.index)}"
+    host     = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+    type     = "ssh"
+    user     = "${var.admin_username}"
+    password = "${var.admin_password}"
+    timeout  = "1m"
+  }
+  provisioner "file" {
+    source      = "./disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo -n true && sudo sh /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "shared_lun", "")} ${lookup(var.cluster_disks[count.index], "shared_vg", "")} ${lookup(var.cluster_disks[count.index], "shared_lg", "")} ${lookup(var.cluster_disks[count.index], "shared_mount", "")}",
+    ]
+  }
+
+  depends_on = ["azurerm_virtual_machine_data_disk_attachment.ssd_hana_shared_disk_attachment"]
+}
+
+resource "null_resource" "ssd_hana_log_disk_mount" {
+  count = "${length(var.cluster_disks)}"
+
+  connection {
+
+    #    host     = "${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address,count.index)}"
+    host     = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+    type     = "ssh"
+    user     = "${var.admin_username}"
+    password = "${var.admin_password}"
+    timeout  = "1m"
+  }
+
+  provisioner "file" {
+    source      = "./disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo -n true && sudo sh /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "log_lun", "")} ${lookup(var.cluster_disks[count.index], "log_vg", "")} ${lookup(var.cluster_disks[count.index], "log_lg", "")} ${lookup(var.cluster_disks[count.index], "log_mount", "")} ${lookup(var.cluster_disks[count.index], "log_disk_count", "")}",
+    ]
+  }
+
+  depends_on = ["azurerm_virtual_machine_data_disk_attachment.ssd_hana_log_disk_attachment_node2", "azurerm_virtual_machine_data_disk_attachment.ssd_hana_log_disk_attachment_node1"]
+}
+
+resource "null_resource" "ssd_hana_databkp_disk_mount" {
+  count = "${length(var.cluster_disks)}"
+
+  connection {
+
+    #    host     = "${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address,count.index)}"
+    host     = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+    type     = "ssh"
+    user     = "${var.admin_username}"
+    password = "${var.admin_password}"
+    timeout  = "1m"
+  }
+
+  provisioner "file" {
+    source      = "./disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo -n true && sudo sh /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "databkp_lun", "")} ${lookup(var.cluster_disks[count.index], "databkp_vg", "")} ${lookup(var.cluster_disks[count.index], "databkp_lg", "")} ${lookup(var.cluster_disks[count.index], "databkp_mount", "")}",
+    ]
+  }
+
+  depends_on = ["azurerm_virtual_machine_data_disk_attachment.ssd_hana_databkp_disk_attachment"]
+}
+
+resource "null_resource" "ssd_hana_logbkp_disk_mount" {
+  count = "${length(var.cluster_disks)}"
+
+  connection {
+
+    #    host     = "${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address,count.index)}"
+    host     = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+    type     = "ssh"
+    user     = "${var.admin_username}"
+    password = "${var.admin_password}"
+    timeout  = "1m"
+  }
+
+  provisioner "file" {
+    source      = "./disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo -n true && sudo sh /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "logbkp_lun", "")} ${lookup(var.cluster_disks[count.index], "logbkp_vg", "")} ${lookup(var.cluster_disks[count.index], "logbkp_lg", "")} ${lookup(var.cluster_disks[count.index], "logbkp_mount", "")}",
+    ]
+  }
+
+  depends_on = ["azurerm_virtual_machine_data_disk_attachment.ssd_hana_logbkp_disk_attachment"]
+}
+
+
+#Init Script
+resource "null_resource" "init_script_accelerated_nic" {
+  count = "${var.accelerated_networking && ! var.use_backened_pool ? var.num : 0}"
+
+  connection {
+
+    #    host     = "${element(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address,count.index)}"
+    host     = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+    type     = "ssh"
+    user     = "${var.admin_username}"
+    password = "${var.admin_password}"
+    timeout  = "1m"
+  }
+
+  provisioner "local-exec" {
+    command    = "sed -i '/${element(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, count.index)}/d' /home/${local.automation_username}/.ssh/known_hosts*"
+    on_failure = "continue"
+  }
+
+  provisioner "file" {
+    source      = "${path.module}/init.sh"
+    destination = "/tmp/init.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo -n true &&  sudo sh  /tmp/init.sh -k '${local.public_key}' -i '${local.automation_user_id}' -u '${local.automation_username}' -r '${local.roaming_mount}' -a '${local.automation_mount}' -H '${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)}' -d '${local.dc}' -p '${element(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, count.index)}' -n '${local.name_servers}' -s '${local.suse_repo}' ",
+    ]
+  }
+}
+#Init Script for LB VMS
+resource "null_resource" "init_script_lb_accelerated_nic" {
+  #  count = "${var.num}"
+  count = "${var.use_backened_pool ? var.num : 0}"
+  connection {
+
+    #    host     = "${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address,count.index)}"
+    host     = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+    type     = "ssh"
+    user     = "${var.admin_username}"
+    password = "${var.admin_password}"
+    timeout  = "1m"
+  }
+
+  provisioner "local-exec" {
+    command    = "sed -i '/${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address, count.index)}/d' /home/${local.automation_username}/.ssh/known_hosts*"
+    on_failure = "continue"
+  }
+
+  provisioner "file" {
+    source      = "${path.module}/init.sh"
+    destination = "/tmp/init.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo -n true &&  sudo sh  /tmp/init.sh -k '${local.public_key}' -i '${local.automation_user_id}' -u '${local.automation_username}' -r '${local.roaming_mount}' -a '${local.automation_mount}' -H '${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)}' -d '${local.dc}' -p '${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address, count.index)}' -s '${local.suse_repo}' -n '${local.name_servers}' ",
+    ]
+  }
+}
+
+resource "null_resource" "bootstrap_accelerated" {
+  count = "${var.accelerated_networking && ! var.use_backened_pool ? var.num : 0}"
+
+  provisioner "local-exec" {
+    command = "knife bootstrap  ${element(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, count.index)} -N ${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)} -x  ${local.automation_username} --sudo -i /home/${local.automation_username}/.ssh/id_rsa -E ${local.automation_environment}  -c /home/deployer/.chef/knife.rb --template ${local.automation_template_path}"
+  }
+
+  depends_on = ["null_resource.init_script_accelerated_nic"]
+}
+
+#Creating Knife Tags
+resource "null_resource" "knife_tag_accelerated" {
+  count = "${var.accelerated_networking && ! var.use_backened_pool ? var.num : 0}"
+
+  provisioner "local-exec" {
+    command = "knife tag create ${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)} ${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)} ${upper(var.name)}${count.index + 1}  ${upper(replace(var.name, "/^b/", ""))}${count.index + 1} ${replace(var.chef_tags, ",", " ")} -c /home/${local.automation_username}/.chef/knife.rb"
+  }
+
+  depends_on = ["null_resource.bootstrap_accelerated"]
+}
+
+#Run Chef Cookbook
+resource "null_resource" "run_cookook_accelerated" {
+  count = "${var.accelerated_networking && ! var.use_backened_pool ? var.num : 0}"
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo -n true && sudo chef-client -o role[${local.role}] -j /automation/github/${local.automation_environment}/${local.automation_environment}.json -E ${local.automation_environment}",
+    ]
+
+    connection {
+
+      #      host        = "${element(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address,count.index)}"
+      host        = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+      type        = "ssh"
+      user        = "${local.automation_username}"
+      timeout     = "1m"
+      private_key = "${file("/home/${local.automation_username}/.ssh/id_rsa")}"
+    }
+  }
+
+  depends_on = ["null_resource.knife_tag_accelerated"]
+
+  triggers = {
+    vm_size = "${var.vm_size}"
+  }
+}
+
+#Reboot
+
+#resource "null_resource" "reboot_accelerated" {
+#  count = "${var.accelerated_networking && !var.use_backened_pool ? var.num : 0}"
+
+#  provisioner "remote-exec" {
+#    inline = [
+#      "sudo -n true && sudo /sbin/reboot",
+#    ]
+
+#    connection {
+
+#      host        = "${element(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address,count.index)}"
+#     host     = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address,azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address),count.index)}" 
+#     type        = "ssh"
+#      user        = "${local.automation_username}"
+#      timeout     = "1m"
+#      private_key = "${file("/home/${local.automation_username}/.ssh/id_rsa")}"
+#    }
+
+#    on_failure = "continue"
+#  }
+
+#  depends_on = ["null_resource.run_cookook_accelerated"]
+#}
+
+#Remove DNS Entry
+resource "null_ =resource" "remove_dns_accelerated" {
+  count = "${var.accelerated_networking && ! var.use_backened_pool ? var.num : 0}"
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo /usr/bin/kinit -k",
+      "sudo /usr/bin/timeout 30 /usr/sbin/addns -D -d dc0${local.dc}.sf.priv -n ${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)} -i ${element(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, count.index)}",
+      "sudo /usr/bin/timeout 30 /usr/sbin/addns -D -d dc0${local.dc}.sf.priv -n ${format("%sb", element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index))} -i ${element(azurerm_network_interface.vm_instance_backup_nic.*.private_ip_address, count.index)}",
+      "sudo /usr/bin/timeout 30 /usr/sbin/addns -D -d dc0${local.dc}.sf.priv -n ${format("%sh", element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index))} -i ${element(azurerm_network_interface.vm_instance_heartbeat_nic.*.private_ip_address, count.index)}",
+      "sudo /usr/bin/timeout 30 /usr/sbin/addns -D -d dc0${local.dc}.sf.priv -n $(echo -n `hostname |rev |cut -c3- |rev |tr -d '\n'`vip) -i $(host $(echo -n `hostname |rev |cut -c3- |rev |tr -d '\n'`vip) |awk '{print $NF}' |tr -d '\n')",
+    ]
+
+    connection {
+
+      #      host        = "${element(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address,count.index)}"
+      host        = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+      type        = "ssh"
+      user        = "${local.automation_username}"
+      timeout     = "1m"
+      private_key = "${file("/home/${local.automation_username}/.ssh/id_rsa")}"
+    }
+
+    on_failure = "continue"
+    when       = "destroy"
+  }
+}
+
+#Remove nodes from chef while distroying the VM
+
+resource "null_resource" "remove_nodes_from_chef_accelerated" {
+  count = "${var.accelerated_networking && ! var.use_backened_pool ? var.num : 0}"
+
+  provisioner "local-exec" {
+    when = "destroy"
+
+    command = <<EOT
+      knife node delete "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)}" -y
+      knife client delete "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)}"  -y
+      sed -i '/"${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)}"/d' /home/${local.automation_username}/.ssh/known_hosts
+    EOT
+
+    on_failure = "continue"
+  }
+}
+
+#bootstraping
+resource "null_resource" "bootstrap_lb_accelerated" {
+  count = "${var.use_backened_pool ? var.num : 0}"
+
+  provisioner "local-exec" {
+    command = "knife bootstrap  ${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address, count.index)} -N ${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)} -x  ${local.automation_username} --sudo -i /home/${local.automation_username}/.ssh/id_rsa -E ${local.automation_environment}  -c /home/deployer/.chef/knife.rb --template ${local.automation_template_path}"
+  }
+
+  depends_on = ["null_resource.init_script_lb_accelerated_nic"]
+}
+
+#Creating Knife Tags
+resource "null_resource" "knife_tag_lb_accelerated" {
+  count = "${var.use_backened_pool ? var.num : 0}"
+
+  provisioner "local-exec" {
+    command = "knife tag create ${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)} ${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)} -c /home/${local.automation_username}/.chef/knife.rb"
+  }
+
+  depends_on = ["null_resource.bootstrap_lb_accelerated"]
+}
+
+#Run Chef Cookbook
+resource "null_resource" "run_cookook_lb_accelerated" {
+  count = "${var.use_backened_pool ? var.num : 0}"
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo -n true && sudo chef-client -o role[${local.role}] -j /automation/github/${local.automation_environment}/${local.automation_environment}.json -E ${local.automation_environment}",
+    ]
+
+    connection {
+
+      #      host        = "${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address,count.index)}"
+      host = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+      type = "ssh"
+      user = "${local.automation_username}"
+      timeout = "1m"
+      private_key = "${file("/home/${local.automation_username}/.ssh/id_rsa")}"
+    }
+  }
+
+  depends_on = ["null_resource.knife_tag_lb_accelerated"]
+
+  triggers = {
+    vm_size = "${var.vm_size}"
+  }
+}
+
+#Reboot
+
+resource "null_resource" "reboot_lb_accelerated" {
+  count = "${var.use_backened_pool ? var.num : 0}"
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo -n true && sudo /sbin/reboot",
+    ]
+
+    connection {
+
+      #      host        = "${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address,count.index)}"
+      host = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+      type = "ssh"
+      user = "${local.automation_username}"
+      timeout = "1m"
+      private_key = "${file("/home/${local.automation_username}/.ssh/id_rsa")}"
+    }
+
+    on_failure = "continue"
+  }
+
+  depends_on = ["null_resource.run_cookook_lb_accelerated"]
+}
+
+#Remove DNS Entry
+
+resource "null_resource" "remove_dns_lb_accelerated" {
+  count = "${var.use_backened_pool ? var.num : 0}"
+
+  provisioner "remote-exec" {
+    when = "destroy"
+
+    inline = [
+      "sudo /usr/bin/kinit -k",
+      "sudo /usr/sbin/addns -D -d dc0${local.dc}.sf.priv -n ${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)} -i ${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address, count.index)}",
+      "sudo /usr/bin/timeout 30 /usr/sbin/addns -D -d dc0${local.dc}.sf.priv -n ${format("%sb", element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index))} -i ${element(azurerm_network_interface.vm_instance_backup_nic.*.private_ip_address, count.index)}",
+      "sudo /usr/bin/timeout 30 /usr/sbin/addns -D -d dc0${local.dc}.sf.priv -n ${format("%sh", element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index))} -i ${element(azurerm_network_interface.vm_instance_heartbeat_nic.*.private_ip_address, count.index)}",
+      "sudo /usr/bin/timeout 30 /usr/sbin/addns -D -d dc0${local.dc}.sf.priv -n $(echo -n `hostname |rev |cut -c3- |rev |tr -d '\n'`vip) -i $(host $(echo -n `hostname |rev |cut -c3- |rev |tr -d '\n'`vip) |awk '{print $NF}' |tr -d '\n')",
+    ]
+
+    connection {
+
+      #      host        = "${element(azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address,count.index)}"
+      host = "${element(concat(azurerm_network_interface.vm_instance_acclerated_nic.*.private_ip_address, azurerm_network_interface.vm_instance_accelerated_nic_with_lb_pools.*.private_ip_address), count.index)}"
+      type = "ssh"
+      user = "${local.automation_username}"
+      timeout = "1m"
+      private_key = "${file("/home/${local.automation_username}/.ssh/id_rsa")}"
+    }
+
+    on_failure = "continue"
+  }
+
+  depends_on = ["null_resource.run_cookook_lb_accelerated"]
+}
+
+#Remove nodes from chef while distroying the VM
+
+resource "null_resource" "remove_nodes_from_chef_lb_accelerated" {
+  count = "${var.use_backened_pool ? var.num : 0}"
+
+  provisioner "local-exec" {
+    when = "destroy"
+
+    command = <<EOT
+      knife node delete "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)}" -y
+      knife client delete "${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)}"  -y
+      sed -i '/"${element(concat(azurerm_virtual_machine.instance_zone_aware.*.name, azurerm_virtual_machine.instance.*.name), count.index)}"/d' /home/${local.automation_username}/.ssh/known_hosts
+    EOT
+
+    on_failure = "continue"
+  }
+}
+
