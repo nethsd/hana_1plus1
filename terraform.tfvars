@@ -6,12 +6,12 @@ flavor     = "f1-micro"
 image      = "sles-15-sp1-v20191113"
 
 db_vpc_name        = "default"
-backup_vpc_name    = "dc101-db-nw"
-heartbeat_vpc_name = "dc101-test-nw"
+backup_vpc_name    = "dc101-hana-backup-nw"
+heartbeat_vpc_name = "dc101-hana-heartbeat-nw"
 
 db_subnet_name        = "default"
-backup_subnet_name    = "dc101-db-sbn"
-heartbeat_subnet_name = "dc101-test-heartbeat-sbn"
+backup_subnet_name    = "dc101-hana-backup-sbn"
+heartbeat_subnet_name = "dc101-hana-heartbeat-bizx-sbn"
 
 dc        = 101
 dc_prefix = "pc"
