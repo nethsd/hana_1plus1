@@ -5,11 +5,13 @@ zone       = "us-east4-a"
 flavor     = "f1-micro"
 image      = "sles-15-sp1-v20191113"
 
-db_vpc_name        = "default"
+db_vpc_name       = "default"
+#db_vpc_name        = "dc101-hana-db-nw"
 backup_vpc_name    = "dc101-hana-backup-nw"
 heartbeat_vpc_name = "dc101-hana-heartbeat-nw"
 
-db_subnet_name        = "default"
+db_subnet_name       = "default"
+#db_subnet_name        = "dc101-hana-db-bizx-sbn"
 backup_subnet_name    = "dc101-hana-backup-sbn"
 heartbeat_subnet_name = "dc101-hana-heartbeat-bizx-sbn"
 

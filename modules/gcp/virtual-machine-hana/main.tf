@@ -38,6 +38,7 @@ resource "google_compute_instance" "instance" {
 
   network_interface {
     network = "${var.db_vpc_name}"
+    subnetwork = "${var.db_subnet_name}"
 
     access_config {
       // Setup for external IP
