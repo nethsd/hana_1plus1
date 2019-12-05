@@ -17,3 +17,9 @@ hana_heartbeat_bizx_subnet = "dc101-hana-heartbeat-bizx-sbn"
 hana_heartbeat_bizx_cidr   = "10.10.21.0/24"
 hana_heartbeat_lms_subnet  = "dc101-hana-heartbeat-lms-sbn"
 hana_heartbeat_lms_cidr    = "10.10.22.0/24"
+
+hana_db_fw_port_list           = ["1128", "1129", "4300-4399", "30015-39999", "50013-59999", "62503"]
+
+hana_db_fw_source_range        = "10.0.0.0/8"
+hana_backup_fw_source_range    = "10.0.0.0/8"
+hana_heartbeat_fw_source_range = "10.0.0.0/8"
