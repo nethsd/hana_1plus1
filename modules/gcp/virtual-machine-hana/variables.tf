@@ -19,6 +19,9 @@ variable "gce_ssh_pub_key_file" {
     default = "/home/kfmaster7777/.ssh/google_compute_engine.pub"
 }
 
+variable "gce_ssh_private_key_file" {
+    default = "/home/kfmaster7777/.ssh/google_compute_engine"
+}
 variable "name" {}
 
 variable "flavor" {}

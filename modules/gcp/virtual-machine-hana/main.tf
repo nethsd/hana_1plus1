@@ -141,3 +141,171 @@ resource "google_compute_disk" "hana_logbkp_disks" {
   type = "${lookup(var.cluster_disks[count.index], "logbkp_type", "")}"
   size = "${lookup(var.cluster_disks[count.index], "logbkp_size", "")}"
 }
+
+resource "null_resource" "hana_usr_disk_mount" {
+  count = "${var.num}"
+
+  connection {
+    host = element(
+      google_compute_instance.instance.*.network_interface.0.access_config.0.nat_ip,
+      count.index,
+    )
+    type        = "ssh"
+    user        = "${var.gce_ssh_user}"
+    private_key = file(var.gce_ssh_private_key_file)
+    timeout  = "1m"
+  }
+
+  provisioner "file" {
+    source      = "/home/kfmaster7777/terraform/hana_tf/modules/gcp/virtual-machine-hana/disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo sh -x /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "usr_lun", "")} ${lookup(var.cluster_disks[count.index], "usr_vg", "")} ${lookup(var.cluster_disks[count.index], "usr_lv", "")} ${lookup(var.cluster_disks[count.index], "usr_mount", "")} || sudo -n true"
+    ]
+  }
+
+  depends_on = ["google_compute_instance.instance"]
+}
+
+resource "null_resource" "hana_data_disk_mount" {
+  count = "${var.num}"
+
+  connection {
+    host = element(
+      google_compute_instance.instance.*.network_interface.0.access_config.0.nat_ip,
+      count.index,
+    )
+    type        = "ssh"
+    user        = "${var.gce_ssh_user}"
+    private_key = file(var.gce_ssh_private_key_file)
+    timeout  = "1m"
+  }
+
+  provisioner "file" {
+    source      = "/home/kfmaster7777/terraform/hana_tf/modules/gcp/virtual-machine-hana/disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo sh -x /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "data_lun", "")} ${lookup(var.cluster_disks[count.index], "data_vg", "")} ${lookup(var.cluster_disks[count.index], "data_lv", "")} ${lookup(var.cluster_disks[count.index], "data_mount", "")} || sudo -n true"
+    ]
+  }
+
+  depends_on = ["google_compute_instance.instance"]
+}
+
+resource "null_resource" "hana_log_disk_mount" {
+  count = "${var.num}"
+
+  connection {
+    host = element(
+      google_compute_instance.instance.*.network_interface.0.access_config.0.nat_ip,
+      count.index,
+    )
+    type        = "ssh"
+    user        = "${var.gce_ssh_user}"
+    private_key = file(var.gce_ssh_private_key_file)
+    timeout  = "1m"
+  }
+
+  provisioner "file" {
+    source      = "/home/kfmaster7777/terraform/hana_tf/modules/gcp/virtual-machine-hana/disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo sh -x /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "log_lun", "")} ${lookup(var.cluster_disks[count.index], "log_vg", "")} ${lookup(var.cluster_disks[count.index], "log_lv", "")} ${lookup(var.cluster_disks[count.index], "log_mount", "")} || sudo -n true"
+    ]
+  }
+
+  depends_on = ["google_compute_instance.instance"]
+}
+
+resource "null_resource" "hana_shared_disk_mount" {
+  count = "${var.num}"
+
+  connection {
+    host = element(
+      google_compute_instance.instance.*.network_interface.0.access_config.0.nat_ip,
+      count.index,
+    )
+    type        = "ssh"
+    user        = "${var.gce_ssh_user}"
+    private_key = file(var.gce_ssh_private_key_file)
+    timeout  = "1m"
+  }
+
+  provisioner "file" {
+    source      = "/home/kfmaster7777/terraform/hana_tf/modules/gcp/virtual-machine-hana/disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo sh -x /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "shared_lun", "")} ${lookup(var.cluster_disks[count.index], "shared_vg", "")} ${lookup(var.cluster_disks[count.index], "shared_lv", "")} ${lookup(var.cluster_disks[count.index], "shared_mount", "")} || sudo -n true"
+    ]
+  }
+
+  depends_on = ["google_compute_instance.instance"]
+}
+
+resource "null_resource" "hana_databkp_disk_mount" {
+  count = "${var.num}"
+
+  connection {
+    host = element(
+      google_compute_instance.instance.*.network_interface.0.access_config.0.nat_ip,
+      count.index,
+    )
+    type        = "ssh"
+    user        = "${var.gce_ssh_user}"
+    private_key = file(var.gce_ssh_private_key_file)
+    timeout  = "1m"
+  }
+
+  provisioner "file" {
+    source      = "/home/kfmaster7777/terraform/hana_tf/modules/gcp/virtual-machine-hana/disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo sh -x /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "databkp_lun", "")} ${lookup(var.cluster_disks[count.index], "databkp_vg", "")} ${lookup(var.cluster_disks[count.index], "databkp_lv", "")} ${lookup(var.cluster_disks[count.index], "databkp_mount", "")} || sudo -n true"
+    ]
+  }
+
+  depends_on = ["google_compute_instance.instance"]
+}
+
+resource "null_resource" "hana_logbkp_disk_mount" {
+  count = "${var.num}"
+
+  connection {
+    host = element(
+      google_compute_instance.instance.*.network_interface.0.access_config.0.nat_ip,
+      count.index,
+    )
+    type        = "ssh"
+    user        = "${var.gce_ssh_user}"
+    private_key = file(var.gce_ssh_private_key_file)
+    timeout  = "1m"
+  }
+
+  provisioner "file" {
+    source      = "/home/kfmaster7777/terraform/hana_tf/modules/gcp/virtual-machine-hana/disk_mount.sh"
+    destination = "/tmp/disk_mount.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo sh -x /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "logbkp_lun", "")} ${lookup(var.cluster_disks[count.index], "logbkp_vg", "")} ${lookup(var.cluster_disks[count.index], "logbkp_lv", "")} ${lookup(var.cluster_disks[count.index], "logbkp_mount", "")} || sudo -n true"
+    ]
+  }
+
+  depends_on = ["google_compute_instance.instance"]
+}
