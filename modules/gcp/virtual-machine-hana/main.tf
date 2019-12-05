@@ -142,6 +142,8 @@ resource "google_compute_disk" "hana_logbkp_disks" {
   size = "${lookup(var.cluster_disks[count.index], "logbkp_size", "")}"
 }
 
+# Mount HANA 1plus1 disks
+# /usr/sap/<SID> disks
 resource "null_resource" "hana_usr_disk_mount" {
   count = "${var.num}"
 
@@ -170,6 +172,7 @@ resource "null_resource" "hana_usr_disk_mount" {
   depends_on = ["google_compute_instance.instance"]
 }
 
+# /hana/data/<SID> disks
 resource "null_resource" "hana_data_disk_mount" {
   count = "${var.num}"
 
@@ -198,6 +201,7 @@ resource "null_resource" "hana_data_disk_mount" {
   depends_on = ["google_compute_instance.instance"]
 }
 
+# /hana/log/<SID> disks
 resource "null_resource" "hana_log_disk_mount" {
   count = "${var.num}"
 
@@ -226,6 +230,7 @@ resource "null_resource" "hana_log_disk_mount" {
   depends_on = ["google_compute_instance.instance"]
 }
 
+# /hana/shared/<SID> disks
 resource "null_resource" "hana_shared_disk_mount" {
   count = "${var.num}"
 
@@ -254,6 +259,7 @@ resource "null_resource" "hana_shared_disk_mount" {
   depends_on = ["google_compute_instance.instance"]
 }
 
+# /hana_backup/<SID>/data disks
 resource "null_resource" "hana_databkp_disk_mount" {
   count = "${var.num}"
 
@@ -282,6 +288,7 @@ resource "null_resource" "hana_databkp_disk_mount" {
   depends_on = ["google_compute_instance.instance"]
 }
 
+# /hana_backup/<SID>/log disks
 resource "null_resource" "hana_logbkp_disk_mount" {
   count = "${var.num}"
 
@@ -304,6 +311,31 @@ resource "null_resource" "hana_logbkp_disk_mount" {
   provisioner "remote-exec" {
     inline = [
       "sudo sh -x /tmp/disk_mount.sh ${lookup(var.cluster_disks[count.index], "logbkp_lun", "")} ${lookup(var.cluster_disks[count.index], "logbkp_vg", "")} ${lookup(var.cluster_disks[count.index], "logbkp_lv", "")} ${lookup(var.cluster_disks[count.index], "logbkp_mount", "")} || sudo -n true"
+    ]
+  }
+
+  depends_on = ["google_compute_instance.instance"]
+}
+
+# Setup additional NIC interfaces
+resource "null_resource" "config_ifcfg" {
+  count = "${var.num}"
+
+  connection {
+    host = element(
+      google_compute_instance.instance.*.network_interface.0.access_config.0.nat_ip,
+      count.index,
+    )
+    type        = "ssh"
+    user        = "${var.gce_ssh_user}"
+    private_key = file(var.gce_ssh_private_key_file)
+    timeout  = "1m"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "( sudo cp /etc/sysconfig/network/ifcfg-eth0 /etc/sysconfig/network/ifcfg-eth1; sudo systemctl restart network ) || sudo -n true"
+      // "( sudo cp /etc/sysconfig/network/ifcfg-eth0 /etc/sysconfig/network/ifcfg-eth1; sudo cp /etc/sysconfig/network/ifcfg-eth0 /etc/sysconfig/network/ifcfg-eth2; sudo systemctl restart network ) || sudo -n true"
     ]
   }
 
